@@ -42,13 +42,18 @@ export const loadKeyBindings = lodash.once((bindings: KeyBinding[]) => {
         return
       }
 
+      const isTypingNow = isTyping()
+
       // 打字时无视快捷键
-      if (binding.action.ignoreTyping !== false && isTyping()) {
+      if (binding.action.ignoreTyping !== false && isTypingNow) {
         return
       }
 
       // 忽略其他可聚焦元素
       const hasElementFocus = (() => {
+        if (isTypingNow) {
+          return true
+        }
         const activeElement = getActiveElement()
         if (([document.body, null] as (Element | null)[]).includes(activeElement)) {
           return false
