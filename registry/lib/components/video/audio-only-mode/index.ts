@@ -27,8 +27,7 @@ export const component = defineComponentMetadata({
     link: 'https://github.com/GrassBlock1',
   },
   description: {
-    'zh-CN':
-      '只获取视频的音频部分，节省流量和性能。如果已经有播放进度，会从那一刻开始播放。',
+    'zh-CN': '只获取视频的音频部分，节省流量和性能。如果已经有播放进度，会从那一刻开始播放。',
   },
   tags: [componentsTags.video],
   entry: none,

@@ -1,11 +1,6 @@
 <template>
   <div class="audio-only-mode-widget">
-    <DefaultWidget
-      :name="buttonText"
-      :icon="icon"
-      :disabled="disabled"
-      @click="toggleAudioMode"
-    />
+    <DefaultWidget :name="buttonText" :icon="icon" :disabled="disabled" @click="toggleAudioMode" />
   </div>
 </template>
 
