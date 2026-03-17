@@ -127,7 +127,10 @@ export default Vue.extend({
           (best, curr) => (curr.bandwidth > best.bandwidth ? curr : best),
           data.dash.audio[0] as AudioStream,
         )
-        const primaryUrl = (bestAudio.baseUrl || bestAudio.base_url || '').replace('http:', 'https:')
+        const primaryUrl = (bestAudio.baseUrl || bestAudio.base_url || '').replace(
+          'http:',
+          'https:',
+        )
         const backupUrls = (bestAudio.backupUrl || bestAudio.backup_url || []).map((u: string) =>
           u.replace('http:', 'https:'),
         )
