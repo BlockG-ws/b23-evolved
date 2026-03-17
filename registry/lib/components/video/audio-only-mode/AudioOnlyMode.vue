@@ -144,7 +144,9 @@ export default Vue.extend({
 
         video.src = audioUrl
         video.load()
-        video.play()
+        await video.play().catch((err: Error) => {
+          throw new Error(`播放失败: ${err.message}`)
+        })
 
         this.isAudioMode = true
         Toast.success('已切换到音频模式', '听视频', 2000)
