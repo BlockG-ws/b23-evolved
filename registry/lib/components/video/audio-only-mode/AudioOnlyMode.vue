@@ -149,7 +149,8 @@ export default Vue.extend({
               searchParams.has('p2p_type')
             )
           } catch {
-            return false
+            // Treat unparseable URLs as "bad/unknown" (MCDN/P2P) to avoid preferring them.
+            return true
           }
         }
 
