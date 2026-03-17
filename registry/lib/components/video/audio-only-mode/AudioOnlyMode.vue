@@ -120,22 +120,51 @@ export default Vue.extend({
           bandwidth: number
           baseUrl?: string
           base_url?: string
-          backupUrl?: string
-          backup_url?: string
+          backupUrl?: string[]
+          backup_url?: string[]
         }
         const bestAudio = (data.dash.audio as AudioStream[]).reduce(
           (best, curr) => (curr.bandwidth > best.bandwidth ? curr : best),
           data.dash.audio[0] as AudioStream,
         )
-        const primaryUrl = bestAudio.baseUrl || bestAudio.base_url
-        const backupUrl = bestAudio.backupUrl || bestAudio.backup_url
-        const rawAudioUrl = primaryUrl || backupUrl
+        const primaryUrl = (bestAudio.baseUrl || bestAudio.base_url || '').replace(
+          'http:',
+          'https:',
+        )
+        const backupUrls = (bestAudio.backupUrl || bestAudio.backup_url || []).map((u: string) =>
+          u.replace('http:', 'https:'),
+        )
+        const allUrls = [primaryUrl, ...backupUrls].filter(Boolean)
 
-        if (!rawAudioUrl) {
+        if (allUrls.length === 0) {
           throw new Error('没有找到可用的音频地址')
         }
 
-        const audioUrl = rawAudioUrl.replace('http:', 'https:')
+        const isMcdnOrP2pUrl = (url: string): boolean => {
+          try {
+            const { hostname, port, searchParams } = new URL(url)
+            const os = searchParams.get('os')?.toLowerCase()
+            const hasNonStandardPort = port !== '' && port !== '80' && port !== '443'
+            return (
+              os === 'mcdn' ||
+              hostname.includes('mcdn') ||
+              hasNonStandardPort ||
+              searchParams.has('p2p_type')
+            )
+          } catch {
+            // Treat unparseable URLs as "bad/unknown" (MCDN/P2P) to avoid preferring them.
+            return true
+          }
+        }
+
+        const audioUrl = allUrls.find(url => !isMcdnOrP2pUrl(url)) ?? allUrls[0]
+        if (isMcdnOrP2pUrl(audioUrl)) {
+          console.warn('所有可用音频地址均为 MCDN/P2P，可能因其他脚本干扰而导致播放失败')
+        }
+
+        if (!video.isConnected) {
+          throw new Error('视频元素已从页面中移除，请刷新后重试')
+        }
 
         if (savedTime > 0) {
           video.addEventListener(
