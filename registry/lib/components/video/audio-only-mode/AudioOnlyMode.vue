@@ -114,12 +114,22 @@ export default Vue.extend({
           bandwidth: number
           baseUrl?: string
           base_url?: string
+          backupUrl?: string
+          backup_url?: string
         }
         const bestAudio = (data.dash.audio as AudioStream[]).reduce(
           (best, curr) => (curr.bandwidth > best.bandwidth ? curr : best),
           data.dash.audio[0] as AudioStream,
         )
-        const audioUrl = (bestAudio.baseUrl || bestAudio.base_url || '').replace('http:', 'https:')
+        const primaryUrl = bestAudio.baseUrl || bestAudio.base_url
+        const backupUrl = bestAudio.backupUrl || bestAudio.backup_url
+        const rawAudioUrl = primaryUrl || backupUrl
+
+        if (!rawAudioUrl) {
+          throw new Error('没有找到可用的音频地址')
+        }
+
+        const audioUrl = rawAudioUrl.replace('http:', 'https:')
 
         if (savedTime > 0) {
           video.addEventListener(
