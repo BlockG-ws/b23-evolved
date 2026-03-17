@@ -89,9 +89,20 @@ export default Vue.extend({
         const { formData, matchUrlPattern } = await import('@/core/utils')
         const { bangumiUrls } = await import('@/core/utils/urls')
 
+        const aid = (unsafeWindow as any)?.aid
+        const cid = (unsafeWindow as any)?.cid
+        if (!aid || !cid) {
+          console.error('无法获取视频参数 aid / cid，当前页面可能尚未初始化完成或不受支持。', {
+            aid,
+            cid,
+          })
+          Toast.error('未能获取视频参数，暂时无法切换到音频模式', '听视频', 3000)
+          return
+        }
+
         const params = formData({
-          avid: unsafeWindow.aid,
-          cid: unsafeWindow.cid,
+          avid: aid,
+          cid,
           qn: 30280,
           otype: 'json',
           fourk: 1,
