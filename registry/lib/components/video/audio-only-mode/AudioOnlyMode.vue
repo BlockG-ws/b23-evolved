@@ -15,14 +15,13 @@ import { getComponentSettings, addComponentListener } from '@/core/settings'
 import { videoChange } from '@/core/observer'
 import { playerReady } from '@/core/utils'
 import { select } from '@/core/spin-query'
-import { getPlayerAgent } from '@/components/video/player-agent'
 import { useScopedConsole } from '@/core/utils/log'
 import { Toast } from '@/core/toast'
 import { Options } from './index'
 
 const console = useScopedConsole('听视频')
 
-export default Vue. extend({
+export default Vue.extend({
   components: {
     DefaultWidget,
   },
@@ -32,7 +31,6 @@ export default Vue. extend({
       isAudioMode: false,
       disabled: false,
       settings,
-      currentAid: unsafeWindow.aid,
     }
   },
   computed: {
@@ -40,26 +38,22 @@ export default Vue. extend({
       return this.isAudioMode ? '退出音频模式' : '音频模式'
     },
     icon(): string {
-      return this.isAudioMode ? 'mdi-volume-high' : 'mdi-volume-off'
+      return this.isAudioMode ? 'mdi-headphones' : 'mdi-headphones-off'
     },
   },
   async mounted() {
-    // 监听视频切换
     videoChange(() => {
-      this.currentAid = unsafeWindow. aid
       this.isAudioMode = false
       if (this.settings.options.autoEnable) {
         this.switchToAudioMode()
       }
     })
 
-    // 如果设置了自动启用，初始化时就切换
     if (this.settings.options.autoEnable) {
       await this.switchToAudioMode()
     }
 
-    // 监听设置变化
-    addComponentListener('audioOnlyMode. autoEnable', (value: boolean) => {
+    addComponentListener('audioOnlyMode.autoEnable', (value: boolean) => {
       if (value && !this.isAudioMode) {
         this.switchToAudioMode()
       }
@@ -81,60 +75,70 @@ export default Vue. extend({
       try {
         this.disabled = true
         await playerReady()
-        
+
         const video = (await select('video')) as HTMLVideoElement
-        if (! video) {
+        if (!video) {
           console.error('未找到视频元素')
           Toast.error('未找到视频元素', '听视频', 2000)
           return
         }
 
-        const playerAgent = await getPlayerAgent()
-        const savedTime = this.settings.options.rememberProgress ?  video.currentTime || 0 : 0
+        const savedTime = this.settings.options.rememberProgress ? video.currentTime || 0 : 0
 
-        // 等待播放器加载完成
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        const { bilibiliApi, getJsonWithCredentials } = await import('@/core/ajax')
+        const { formData, matchUrlPattern } = await import('@/core/utils')
+        const { bangumiUrls } = await import('@/core/utils/urls')
 
-        // 查找清晰度菜单
-        const qualitySelector = playerAgent.isBpxPlayer
-          ? '.bpx-player-ctrl-quality-menu . bpx-menu-item'
-          : '.bilibili-player-video-quality-menu .bui-select-list > li. bui-select-item'
+        const params = formData({
+          avid: unsafeWindow.aid,
+          cid: unsafeWindow.cid,
+          qn: 30280,
+          otype: 'json',
+          fourk: 1,
+          fnver: 0,
+          fnval: 16,
+        })
 
-        await select(qualitySelector)
-        const qualityItems = dqa(qualitySelector) as HTMLElement[]
+        const isBangumi = bangumiUrls.some((url: string) => matchUrlPattern(url))
+        const apiUrl = isBangumi
+          ? `https://api.bilibili.com/pgc/player/web/playurl?${params}`
+          : `https://api.bilibili.com/x/player/playurl?${params}`
 
-        if (! qualityItems || qualityItems.length === 0) {
-          console.warn('未找到清晰度选项')
-          Toast.error('未找到清晰度选项', '听视频', 2000)
-          return
+        const data = await bilibiliApi(getJsonWithCredentials(apiUrl), '获取音频链接失败')
+
+        if (!data.dash || !data.dash.audio || data.dash.audio.length === 0) {
+          throw new Error('没有找到音频流')
         }
 
-        // 找到最低清晰度（通常是 360P，质量值最小）
-        const lowestQuality = qualityItems.reduce((lowest, item) => {
-          const currentValue = parseInt(item.getAttribute('data-value') || '999')
-          const lowestValue = parseInt(lowest.getAttribute('data-value') || '999')
-          return currentValue < lowestValue ? item : lowest
-        }, qualityItems[0])
+        interface AudioStream {
+          bandwidth: number
+          baseUrl?: string
+          base_url?: string
+        }
+        const bestAudio = (data.dash.audio as AudioStream[]).reduce(
+          (best, curr) => (curr.bandwidth > best.bandwidth ? curr : best),
+          data.dash.audio[0] as AudioStream,
+        )
+        const audioUrl = (bestAudio.baseUrl || bestAudio.base_url || '').replace('http:', 'https:')
 
-        // 设置事件监听器在清晰度切换后恢复播放进度
-        const restoreProgress = () => {
-          if (savedTime > 0) {
-            video.currentTime = savedTime
-            console.log(`已恢复播放进度:  ${savedTime}s`)
-          }
-          video.removeEventListener('loadedmetadata', restoreProgress)
+        if (savedTime > 0) {
+          video.addEventListener(
+            'loadedmetadata',
+            () => {
+              video.currentTime = savedTime
+              console.log(`已恢复播放进度: ${savedTime}s`)
+            },
+            { once: true },
+          )
         }
 
-        if (this.settings.options.rememberProgress) {
-          video.addEventListener('loadedmetadata', restoreProgress)
-        }
+        video.src = audioUrl
+        video.load()
+        video.play()
 
-        // 点击最低清晰度
-        lowestQuality.click()
         this.isAudioMode = true
-        
-        Toast.success('已切换到音频模式（最低清晰度）', '听视频', 2000)
-        console.log('已切换到音频模式（最低清晰度）')
+        Toast.success('已切换到音频模式', '听视频', 2000)
+        console.log('已切换到音频模式')
       } catch (error) {
         console.error('切换音频模式失败:', error)
         Toast.error(`切换失败: ${error.message}`, '听视频', 3000)
@@ -147,7 +151,7 @@ export default Vue. extend({
 </script>
 
 <style lang="scss" scoped>
-. audio-only-mode-widget {
+.audio-only-mode-widget {
   display: inline-block;
 }
 </style>
