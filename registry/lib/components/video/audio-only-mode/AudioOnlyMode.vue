@@ -28,6 +28,7 @@ export default Vue.extend({
       disabled: false,
       settings,
       blurTimer: null as ReturnType<typeof setTimeout> | null,
+      initialAutoEnableAttempted: false as boolean,
     }
   },
   computed: {
@@ -41,7 +42,8 @@ export default Vue.extend({
   async mounted() {
     videoChange(async () => {
       this.isAudioMode = false
-      if (this.settings.options.autoEnable) {
+      if (this.settings.options.autoEnable && !this.initialAutoEnableAttempted) {
+        this.initialAutoEnableAttempted = true
         // Wait briefly for the player to settle after a no-refresh video change
         // before attempting to switch to audio mode, to avoid AbortError.
         await new Promise(r => setTimeout(r, 800))
@@ -49,7 +51,8 @@ export default Vue.extend({
       }
     })
 
-    if (this.settings.options.autoEnable) {
+    if (this.settings.options.autoEnable && !this.initialAutoEnableAttempted) {
+      this.initialAutoEnableAttempted = true
       await this.switchToAudioMode()
     }
 
