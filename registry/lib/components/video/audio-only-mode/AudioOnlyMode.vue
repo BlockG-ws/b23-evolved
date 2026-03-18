@@ -89,8 +89,11 @@ export default Vue.extend({
     },
     handleVisibilityChange() {
       if (document.hidden) {
+        // Clear any existing timer before starting a new one to avoid orphaned timeouts.
+        this.clearBlurTimer()
         this.blurTimer = setTimeout(() => {
-          if (!this.isAudioMode) {
+          // Re-check visibility to avoid switching modes if the page is visible again.
+          if (document.hidden && !this.isAudioMode) {
             this.switchToAudioMode()
           }
         }, BLUR_AUTO_ENABLE_DELAY_MS)
