@@ -15,6 +15,7 @@ import { Toast } from '@/core/toast'
 import { Options } from './index'
 
 const console = useScopedConsole('听视频')
+const BLUR_AUTO_ENABLE_DELAY_MS = 30 * 1000
 
 export default Vue.extend({
   components: {
@@ -26,6 +27,7 @@ export default Vue.extend({
       isAudioMode: false,
       disabled: false,
       settings,
+      blurTimer: null as ReturnType<typeof setTimeout> | null,
     }
   },
   computed: {
@@ -37,9 +39,12 @@ export default Vue.extend({
     },
   },
   async mounted() {
-    videoChange(() => {
+    videoChange(async () => {
       this.isAudioMode = false
       if (this.settings.options.autoEnable) {
+        // Wait briefly for the player to settle after a no-refresh video change
+        // before attempting to switch to audio mode, to avoid AbortError.
+        await new Promise(r => setTimeout(r, 800))
         this.switchToAudioMode()
       }
     })
@@ -53,8 +58,49 @@ export default Vue.extend({
         this.switchToAudioMode()
       }
     })
+
+    if (this.settings.options.autoEnableOnBlur) {
+      this.setupBlurListener()
+    }
+
+    addComponentListener('audioOnlyMode.autoEnableOnBlur', (value: boolean) => {
+      if (value) {
+        this.setupBlurListener()
+      } else {
+        this.teardownBlurListener()
+      }
+    })
+  },
+  beforeDestroy() {
+    this.teardownBlurListener()
   },
   methods: {
+    setupBlurListener() {
+      // Remove first to prevent duplicate registrations if called multiple times.
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+      document.addEventListener('visibilitychange', this.handleVisibilityChange)
+    },
+    teardownBlurListener() {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+      this.clearBlurTimer()
+    },
+    handleVisibilityChange() {
+      if (document.hidden) {
+        this.blurTimer = setTimeout(() => {
+          if (!this.isAudioMode) {
+            this.switchToAudioMode()
+          }
+        }, BLUR_AUTO_ENABLE_DELAY_MS)
+      } else {
+        this.clearBlurTimer()
+      }
+    },
+    clearBlurTimer() {
+      if (this.blurTimer !== null) {
+        clearTimeout(this.blurTimer)
+        this.blurTimer = null
+      }
+    },
     async toggleAudioMode() {
       if (this.isAudioMode) {
         Toast.info('请刷新页面以退出音频模式', '听视频', 2000)
@@ -179,9 +225,23 @@ export default Vue.extend({
 
         video.src = audioUrl
         video.load()
-        await video.play().catch((err: Error) => {
+
+        let playAborted = false
+        await video.play().catch((err: DOMException) => {
+          if (err.name === 'AbortError') {
+            // AbortError is expected when a no-refresh video navigation interrupts
+            // the play() call before it can complete. This is not a real failure;
+            // the next videoChange event will trigger another switch attempt.
+            console.warn('播放被中止 (AbortError)，可能由视频切换引起，将等待下次触发')
+            playAborted = true
+            return
+          }
           throw new Error(`播放失败: ${err.message}`)
         })
+
+        if (playAborted) {
+          return
+        }
 
         this.isAudioMode = true
         Toast.success('已切换到音频模式', '听视频', 2000)

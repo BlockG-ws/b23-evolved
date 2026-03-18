@@ -11,6 +11,10 @@ export const options = defineOptionsMetadata({
     defaultValue: false,
     displayName: '自动启用',
   },
+  autoEnableOnBlur: {
+    defaultValue: false,
+    displayName: '失去焦点后自动启用',
+  },
   rememberProgress: {
     defaultValue: true,
     displayName: '记住播放进度',
