@@ -7,11 +7,13 @@ const getAccentColor = (): string | null => {
   const el = document.createElement('div')
   el.style.cssText = 'position:fixed;pointer-events:none;opacity:0;color:AccentColor'
   document.body.appendChild(el)
-  const color = getComputedStyle(el).color
+  const { color } = getComputedStyle(el)
   document.body.removeChild(el)
   // Match both rgb() and rgba() formats returned by browsers
   const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
-  if (!match) return null
+  if (!match) {
+    return null
+  }
   const r = parseInt(match[1]).toString(16).padStart(2, '0')
   const g = parseInt(match[2]).toString(16).padStart(2, '0')
   const b = parseInt(match[3]).toString(16).padStart(2, '0')
