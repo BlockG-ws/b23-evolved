@@ -1,6 +1,9 @@
 import { PluginMetadata } from '@/plugins/plugin'
 
 const getAccentColor = (): string | null => {
+  if (!CSS.supports('color', 'AccentColor')) {
+    return null
+  }
   const el = document.createElement('div')
   el.style.cssText = 'position:fixed;pointer-events:none;opacity:0;color:AccentColor'
   document.body.appendChild(el)
