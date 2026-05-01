@@ -6,7 +6,8 @@ const getAccentColor = (): string | null => {
   document.body.appendChild(el)
   const color = getComputedStyle(el).color
   document.body.removeChild(el)
-  const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)
+  // Match both rgb() and rgba() formats returned by browsers
+  const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
   if (!match) return null
   const r = parseInt(match[1]).toString(16).padStart(2, '0')
   const g = parseInt(match[2]).toString(16).padStart(2, '0')
