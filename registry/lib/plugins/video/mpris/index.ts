@@ -3,6 +3,8 @@ import { videoChange } from '@/core/observer'
 import { playerAgent } from '@/components/video/player-agent'
 import { getJsonWithCredentials } from '@/core/ajax'
 
+const POSITION_UPDATE_INTERVAL_MS = 5000
+
 interface PageInfo {
   cid: number
   title: string
@@ -124,11 +126,9 @@ export const plugin: PluginMetadata = {
           : videoTitle
 
       // Collection (ugc_season) episode list
-      const seasonSections: { episodes: SeasonEpisode[] }[] = lodash.get(
-        data,
-        'ugc_season.sections',
-        [],
-      )
+      const seasonSections: { episodes: SeasonEpisode[] }[] =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (data as any).ugc_season?.sections ?? []
       const allSeasonEpisodes: SeasonEpisode[] = seasonSections.flatMap(s => s.episodes ?? [])
       const currentSeasonIdx =
         allSeasonEpisodes.length > 0
@@ -231,7 +231,7 @@ export const plugin: PluginMetadata = {
       )
 
       // Periodic position update every 5 s
-      positionUpdateTimer = setInterval(updatePositionState, 5000)
+      positionUpdateTimer = setInterval(updatePositionState, POSITION_UPDATE_INTERVAL_MS)
     })
   },
 }
