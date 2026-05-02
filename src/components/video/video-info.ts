@@ -12,6 +12,26 @@ export interface VideoPageInfo {
   pageNumber: number
 }
 
+export interface UgcSeasonEpisodeInfo {
+  aid: string
+  bvid: string
+  cid: number
+  title: string
+}
+
+export interface UgcSeasonSectionInfo {
+  title: string
+  episodes: UgcSeasonEpisodeInfo[]
+}
+
+export interface UgcSeasonInfo {
+  seasonId: number
+  title: string
+  sections: UgcSeasonSectionInfo[]
+  /** All episodes flattened across sections, in order */
+  episodes: UgcSeasonEpisodeInfo[]
+}
+
 export interface VideoStat {
   view: number
   like: number
@@ -39,6 +59,7 @@ export class VideoInfo {
   description: string
   up: UpInfo
   pages: VideoPageInfo[]
+  ugcSeason?: UgcSeasonInfo
   redirectUrl?: string
   stat: VideoStat
 
@@ -85,6 +106,26 @@ export class VideoInfo {
       title: it.part,
       pageNumber: it.page,
     }))
+    const ugcSeasonData = data.ugc_season
+    if (ugcSeasonData) {
+      const sections: UgcSeasonSectionInfo[] = (ugcSeasonData.sections ?? []).map((s: any) => ({
+        title: s.title ?? '',
+        episodes: (s.episodes ?? []).map((e: any) => ({
+          aid: String(e.aid),
+          bvid: String(e.bvid),
+          cid: Number(e.cid),
+          title: String(e.title ?? ''),
+        })),
+      }))
+      this.ugcSeason = {
+        seasonId: ugcSeasonData.id,
+        title: ugcSeasonData.title ?? '',
+        sections,
+        episodes: sections.flatMap(s => s.episodes),
+      }
+    } else {
+      this.ugcSeason = undefined
+    }
     this.redirectUrl = data.redirect_url
     this.stat = data.stat
     return this

@@ -1,22 +1,9 @@
 import type { PluginMetadata } from '@/plugins/plugin'
 import { videoChange } from '@/core/observer'
 import { playerAgent } from '@/components/video/player-agent'
-import { getJsonWithCredentials } from '@/core/ajax'
+import { VideoInfo } from '@/components/video/video-info'
 
 const POSITION_UPDATE_INTERVAL_MS = 5000
-
-interface PageInfo {
-  cid: number
-  title: string
-  pageNumber: number
-}
-
-interface SeasonEpisode {
-  aid: string
-  bvid: string
-  cid: number
-  title: string
-}
 
 const setOrClearAction = (
   action: MediaSessionAction,
@@ -97,50 +84,40 @@ export const plugin: PluginMetadata = {
         return
       }
 
-      // Fetch video info from API
-      const json = await getJsonWithCredentials(
-        `https://api.bilibili.com/x/web-interface/view?aid=${aid}`,
-      )
-      if (json.code !== 0) {
+      // Use VideoInfo API to retrieve all video metadata in one call
+      let info: VideoInfo
+      try {
+        info = await new VideoInfo(String(aid)).fetchInfo()
+      } catch {
         return
       }
-      const { data } = json
 
-      const videoTitle: string = data.title ?? ''
-      const upName: string = data.owner?.name ?? ''
-      const coverUrl: string = (data.pic ?? '').replace('http:', 'https:')
-
-      // Multi-page info (分P)
-      const pages: PageInfo[] = (data.pages ?? []).map((p: Record<string, unknown>) => ({
-        cid: Number(p.cid),
-        title: String(p.part ?? ''),
-        pageNumber: Number(p.page),
-      }))
       const cidNum = Number(cid)
-      const currentPageIdx = pages.length > 1 ? pages.findIndex(p => p.cid === cidNum) : -1
+
+      // --- 分P (multi-page) ---
+      const { pages } = info
+      const isMultiPage = pages.length > 1
+      const currentPageIdx = isMultiPage ? pages.findIndex(p => p.cid === cidNum) : -1
 
       // Display title: append part title when multi-page
       const displayTitle =
-        pages.length > 1 && currentPageIdx >= 0
-          ? `${videoTitle} P${pages[currentPageIdx].pageNumber} ${pages[currentPageIdx].title}`
-          : videoTitle
+        isMultiPage && currentPageIdx >= 0
+          ? `${info.title} P${pages[currentPageIdx].pageNumber} ${pages[currentPageIdx].title}`
+          : info.title
 
-      // Collection (ugc_season) episode list
-      const seasonSections: { episodes: SeasonEpisode[] }[] =
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (data as any).ugc_season?.sections ?? []
-      const allSeasonEpisodes: SeasonEpisode[] = seasonSections.flatMap(s => s.episodes ?? [])
+      // --- 合集 (ugc_season) ---
+      const seasonEpisodes = info.ugcSeason?.episodes ?? []
       const currentSeasonIdx =
-        allSeasonEpisodes.length > 0
-          ? allSeasonEpisodes.findIndex(e => Number(e.cid) === cidNum)
-          : -1
+        seasonEpisodes.length > 0 ? seasonEpisodes.findIndex(e => e.cid === cidNum) : -1
 
-      // Set media metadata
+      // Set media metadata via VideoInfo fields
       ms.metadata = new MediaMetadata({
         title: displayTitle,
-        artist: upName,
-        album: videoTitle,
-        artwork: coverUrl ? [{ src: coverUrl, sizes: '480x270', type: 'image/jpeg' }] : [],
+        artist: info.up.name,
+        album: info.title,
+        artwork: info.coverUrl
+          ? [{ src: info.coverUrl, sizes: '480x270', type: 'image/jpeg' }]
+          : [],
       })
       ms.playbackState = videoEl.paused ? 'paused' : 'playing'
 
@@ -168,38 +145,40 @@ export const plugin: PluginMetadata = {
         }
       })
 
-      // Previous / next track navigation
-      if (pages.length > 1 && currentPageIdx >= 0) {
-        // Case 1: multi-page video (分P)
-        const hasPrev = currentPageIdx > 0
-        const hasNext = currentPageIdx < pages.length - 1
-        setOrClearAction(
-          'previoustrack',
-          hasPrev ? () => navigateToPage(pages[currentPageIdx - 1].pageNumber) : null,
-        )
-        setOrClearAction(
-          'nexttrack',
-          hasNext ? () => navigateToPage(pages[currentPageIdx + 1].pageNumber) : null,
-        )
-      } else if (allSeasonEpisodes.length > 0 && currentSeasonIdx >= 0) {
-        // Case 2: collection (ugc_season 合集)
-        const hasPrev = currentSeasonIdx > 0
-        const hasNext = currentSeasonIdx < allSeasonEpisodes.length - 1
-        setOrClearAction(
-          'previoustrack',
-          hasPrev ? () => navigateToBvid(allSeasonEpisodes[currentSeasonIdx - 1].bvid) : null,
-        )
-        setOrClearAction(
-          'nexttrack',
-          hasNext ? () => navigateToBvid(allSeasonEpisodes[currentSeasonIdx + 1].bvid) : null,
-        )
-      } else {
-        // Case 3: single video or bangumi — delegate to player's built-in next button
-        setOrClearAction('previoustrack', null)
-        const nextBtn = document.querySelector('.bpx-player-ctrl-next') as HTMLElement | null
-        const hasPlayerNext = nextBtn !== null && !nextBtn.classList.contains('bpx-state-disabled')
-        setOrClearAction('nexttrack', hasPlayerNext ? () => nextBtn.click() : null)
+      // --- Previous / next track ---
+      // A video can be BOTH in a collection (合集) AND have multiple parts (分P).
+      // Navigation priority: move between parts first; when at the boundary of
+      // the current video's pages, move to the adjacent episode in the collection.
+      // If neither applies, fall back to the player's built-in next button.
+
+      // Compute prev/next handlers independently so both dimensions can contribute.
+      let prevHandler: MediaSessionActionHandler | null = null
+      let nextHandler: MediaSessionActionHandler | null = null
+
+      if (isMultiPage && currentPageIdx > 0) {
+        // There is a previous part within the current video
+        prevHandler = () => navigateToPage(pages[currentPageIdx - 1].pageNumber)
+      } else if (currentSeasonIdx > 0) {
+        // At first part (or single-page) of a collection episode — go to previous episode
+        prevHandler = () => navigateToBvid(seasonEpisodes[currentSeasonIdx - 1].bvid)
       }
+
+      if (isMultiPage && currentPageIdx < pages.length - 1) {
+        // There is a next part within the current video
+        nextHandler = () => navigateToPage(pages[currentPageIdx + 1].pageNumber)
+      } else if (currentSeasonIdx >= 0 && currentSeasonIdx < seasonEpisodes.length - 1) {
+        // At last part (or single-page) of a collection episode — go to next episode
+        nextHandler = () => navigateToBvid(seasonEpisodes[currentSeasonIdx + 1].bvid)
+      } else if (!isMultiPage && seasonEpisodes.length === 0) {
+        // Single video or bangumi — delegate to player's built-in next button
+        const nextBtn = document.querySelector('.bpx-player-ctrl-next') as HTMLElement | null
+        if (nextBtn !== null && !nextBtn.classList.contains('bpx-state-disabled')) {
+          nextHandler = () => nextBtn.click()
+        }
+      }
+
+      setOrClearAction('previoustrack', prevHandler)
+      setOrClearAction('nexttrack', nextHandler)
 
       // Position state — wait for metadata if needed
       const initPosition = () => updatePositionState()
