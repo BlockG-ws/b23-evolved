@@ -30,12 +30,12 @@ export const plugin: PluginMetadata = {
   name: 'video.mpris',
   displayName: 'MPRIS 媒体控制',
   description: `通过 Media Session API 将 Bilibili 视频集成到系统媒体控制（MPRIS）：
-- 标题为视频标题（多 P 时附带分 P 标题）
+- 标题为视频标题（多P时附带分P标题）
 - 艺术家为 UP 主名称
 - 专辑封面为视频封面
 - 播放进度为视频进度
 - 支持快进、快退、倍速
-- 分 P 视频/合集支持上一曲和下一曲切换，并在切换视频时自动更新以上信息`,
+- 分P视频/合集支持上一曲和下一曲切换，并在切换视频时自动更新以上信息`,
   setup: () => {
     if (!('mediaSession' in navigator)) {
       return
@@ -170,7 +170,9 @@ export const plugin: PluginMetadata = {
         // At last part (or single-page) of a collection episode — go to next episode
         nextHandler = () => navigateToBvid(seasonEpisodes[currentSeasonIdx + 1].bvid)
       } else if (!isMultiPage && seasonEpisodes.length === 0) {
-        // Single video or bangumi — delegate to player's built-in next button
+        // Single video or bangumi — delegate to player's built-in next button if available.
+        // The selector targets the bpx player's next-video button; when absent or disabled
+        // the handler is left as null (no nexttrack action registered), which is intentional.
         const nextBtn = document.querySelector('.bpx-player-ctrl-next') as HTMLElement | null
         if (nextBtn !== null && !nextBtn.classList.contains('bpx-state-disabled')) {
           nextHandler = () => nextBtn.click()
