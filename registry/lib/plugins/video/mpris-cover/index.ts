@@ -15,12 +15,18 @@ export const plugin: PluginMetadata = {
     }
 
     const ms = navigator.mediaSession
+    let requestId = 0
 
     videoChange(async ({ aid }) => {
+      const currentId = ++requestId
       let info: VideoInfo
       try {
         info = await new VideoInfo(String(aid)).fetchInfo()
       } catch {
+        return
+      }
+
+      if (currentId !== requestId) {
         return
       }
 
