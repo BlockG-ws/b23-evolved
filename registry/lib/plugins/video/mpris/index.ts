@@ -1,7 +1,7 @@
 import type { PluginMetadata } from '@/plugins/plugin'
 import { videoChange } from '@/core/observer'
 import { playerAgent } from '@/components/video/player-agent'
-import { VideoInfo } from '@/components/video/video-info'
+import { VideoInfo, VideoSeasonEpisodeInfo } from '@/components/video/video-info'
 
 const POSITION_UPDATE_INTERVAL_MS = 5000
 
@@ -22,8 +22,14 @@ const navigateToPage = (pageNumber: number) => {
   window.location.href = url.toString()
 }
 
-const navigateToBvid = (bvid: string) => {
-  window.location.href = `https://www.bilibili.com/video/${bvid}`
+const navigateToEpisode = (episode: VideoSeasonEpisodeInfo) => {
+  if (episode.bvid) {
+    window.location.href = `https://www.bilibili.com/video/${episode.bvid}`
+    return
+  }
+  if (episode.aid) {
+    window.location.href = `https://www.bilibili.com/video/av${episode.aid}`
+  }
 }
 
 export const plugin: PluginMetadata = {
@@ -106,9 +112,14 @@ export const plugin: PluginMetadata = {
           : info.title
 
       // --- 合集 (ugc_season) ---
-      const seasonEpisodes = info.ugcSeason?.episodes ?? []
-      const currentSeasonIdx =
-        seasonEpisodes.length > 0 ? seasonEpisodes.findIndex(e => e.cid === cidNum) : -1
+      const seasonEpisodes =
+        info.ugcSeason?.sections?.flatMap(section => section.episodes ?? []) ?? []
+      const currentSeasonIdx = seasonEpisodes.findIndex(episode => {
+        const cids = episode.pages?.length
+          ? episode.pages.map(page => page.cid)
+          : [episode.page?.cid ?? episode.cid]
+        return cids.includes(cidNum)
+      })
 
       // Set media metadata via VideoInfo fields
       ms.metadata = new MediaMetadata({
@@ -160,7 +171,7 @@ export const plugin: PluginMetadata = {
         prevHandler = () => navigateToPage(pages[currentPageIdx - 1].pageNumber)
       } else if (currentSeasonIdx > 0) {
         // At first part (or single-page) of a collection episode — go to previous episode
-        prevHandler = () => navigateToBvid(seasonEpisodes[currentSeasonIdx - 1].bvid)
+        prevHandler = () => navigateToEpisode(seasonEpisodes[currentSeasonIdx - 1])
       }
 
       if (isMultiPage && currentPageIdx < pages.length - 1) {
@@ -168,7 +179,7 @@ export const plugin: PluginMetadata = {
         nextHandler = () => navigateToPage(pages[currentPageIdx + 1].pageNumber)
       } else if (currentSeasonIdx >= 0 && currentSeasonIdx < seasonEpisodes.length - 1) {
         // At last part (or single-page) of a collection episode — go to next episode
-        nextHandler = () => navigateToBvid(seasonEpisodes[currentSeasonIdx + 1].bvid)
+        nextHandler = () => navigateToEpisode(seasonEpisodes[currentSeasonIdx + 1])
       } else if (!isMultiPage && seasonEpisodes.length === 0) {
         // Single video or bangumi — delegate to player's built-in next button if available.
         // The selector targets the bpx player's next-video button; when absent or disabled
