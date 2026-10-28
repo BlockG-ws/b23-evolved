@@ -10,10 +10,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
-import { getComponentSettings } from '@/core/settings'
+import { watch, computed } from 'vue'
 import { VIcon } from '@/ui'
-import { FeedsFilterOptions } from './options'
+import { useFeedsFilterState } from './state'
 
 interface Props {
   name: string
@@ -25,48 +24,52 @@ interface Props {
 
 const props = defineProps<Props>()
 
-const { options } = getComponentSettings<FeedsFilterOptions>('feedsFilter')
+const { isTypeDisabled, setTypeDisabled } = useFeedsFilterState()
 
-const optionKey = computed(() => (props.type.id >= 0 ? 'types' : 'specialTypes'))
-
-const disabled = ref(options[optionKey.value].includes(props.type.id))
-
-const setFilter = (isDisabled: boolean, updateSettings = true) => {
-  if (isDisabled) {
+const updateTypeFilterClass = (disabled: boolean) => {
+  if (disabled) {
     document.body.classList.add(`feeds-filter-block-${props.name}`)
   } else {
     document.body.classList.remove(`feeds-filter-block-${props.name}`)
   }
-
-  if (!updateSettings) {
-    return
-  }
-
-  const key = optionKey.value as 'types' | 'specialTypes'
-  if (isDisabled) {
-    options[key].push(props.type.id)
-  } else {
-    const index = options[key].indexOf(props.type.id)
-    if (index !== -1) {
-      options[key].splice(index, 1)
-    }
-  }
 }
 
-watch(disabled, (newValue: boolean) => {
-  setFilter(newValue)
+const disabled = computed({
+  get: () => isTypeDisabled(props.type.id),
+  set: (value: boolean) => {
+    setTypeDisabled(props.type.id, value)
+  },
 })
 
-onMounted(() => {
-  setFilter(disabled.value, false)
-})
+watch(
+  disabled,
+  (value: boolean) => {
+    updateTypeFilterClass(value)
+  },
+  { immediate: true },
+)
 </script>
+
 <style lang="scss">
 .feeds-filter-switch {
   &:not(:last-child) {
     margin-bottom: 4px;
   }
-  label {
+  > .filter-side-card-button {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    color: inherit;
+    text-align: inherit;
+    background-color: transparent;
+
+    &:focus-visible {
+      outline: 2px solid var(--theme-color);
+      outline-offset: 2px;
+    }
+  }
+  label,
+  > .filter-side-card-button {
     cursor: pointer;
     margin: 0;
     padding: 4px 6px;

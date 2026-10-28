@@ -9,6 +9,11 @@ import { logError } from '@/core/utils/log'
 import { setLatestID } from '@/components/feeds/notify'
 import { VLoading, VEmpty, ScrollTrigger } from '@/ui'
 
+const isUnavailableRawItem = (item: any) => {
+  const major = lodash.get(item, 'modules.module_dynamic.major')
+  return major == null || major.type === 'MAJOR_TYPE_BLOCKED'
+}
+
 /**
  * 获取用于支持顶栏动态无限滚动的Vue Mixin
  * @param type 动态类型
@@ -56,7 +61,9 @@ export const nextPageMixin = <MappedItem extends { id: string }, RawItem>(
             this.hasMorePage = false
             throw new Error(json.message)
           }
-          const jsonCards = lodash.get(json, 'data.items', []).map(jsonMapper) as MappedItem[]
+          const jsonCards = (lodash.get(json, 'data.items', []) as RawItem[])
+            .filter(item => !isUnavailableRawItem(item))
+            .map(jsonMapper) as MappedItem[]
 
           let concatCards = applyContentFilter(
             cards

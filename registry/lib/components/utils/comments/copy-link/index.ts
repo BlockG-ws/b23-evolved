@@ -1,5 +1,5 @@
 import { defineComponentMetadata } from '@/components/define'
-import { CommentItem, CommentReplyItem } from '@/components/utils/comment-apis'
+import { CommentAreaV3, CommentItem, CommentReplyItem } from '@/components/utils/comment-apis'
 import { matchUrlPattern } from '@/core/utils'
 import { feedsUrls } from '@/core/utils/urls'
 
@@ -25,6 +25,20 @@ const entry = async () => {
   const addCopyLinkButton = (comment: CommentItem) => {
     const processItems = (items: CommentReplyItem[]) => {
       items.forEach(item => {
+        if (item.parent instanceof CommentAreaV3) {
+          item.parent.getMenuElement(item).then(menu => {
+            if (!menu) {
+              return
+            }
+            const originalItem = menu
+              .querySelectorAll('li')
+              .find(li => li.textContent === '复制评论链接') as HTMLElement | undefined
+            if (!originalItem) {
+              return
+            }
+            originalItem.style.display = 'none'
+          })
+        }
         addMenuItem(item, {
           className: 'copy-link',
           text: '复制链接',
@@ -45,9 +59,6 @@ const entry = async () => {
 export const component = defineComponentMetadata({
   name: 'copyCommentsLink',
   displayName: '复制评论链接',
-  description: {
-    'zh-CN': '开启后, 可在每条评论的菜单中选择复制链接.',
-  },
   entry,
   tags: [componentsTags.utils],
 })

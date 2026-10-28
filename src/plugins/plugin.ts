@@ -1,6 +1,6 @@
 import { ComponentMetadata, FeatureBase } from '@/components/component'
-import { deleteValue } from '@/core/utils'
 import { CoreApis } from '@/core/core-apis'
+import { deleteValue } from '@/core/utils'
 import { addData, registerAndGetData, registerData } from './data'
 import { addHook, getHook } from './hook'
 
@@ -53,13 +53,17 @@ export const plugins: PluginMetadata[] = getBuiltInPlugins()
  * 安装插件
  * @param code 插件代码
  */
-export const installPlugin = async (code: string) => {
-  const { loadFeatureCode } = await import('@/core/external-input')
+export const installPlugin = async (code: string, parsedPlugin?: PluginMetadata) => {
   let plugin: PluginMetadata
-  try {
-    plugin = loadFeatureCode(code) as PluginMetadata
-  } catch (e) {
-    throw new Error('无效的插件代码', e)
+  if (parsedPlugin) {
+    plugin = parsedPlugin
+  } else {
+    try {
+      const { loadFeatureCode } = await import('@/core/external-input')
+      plugin = loadFeatureCode(code) as PluginMetadata
+    } catch (e) {
+      throw new Error('无效的插件代码', e)
+    }
   }
   const { settings } = await import('@/core/settings')
   const existingPlugin = settings.userPlugins[plugin.name]
@@ -124,11 +128,14 @@ export const extractPluginFromComponent = (component: ComponentMetadata) => {
   if (!component.plugin) {
     return null
   }
-  return {
-    name: `${component.name}.plugin`,
-    displayName: `${component.displayName} - 附带插件`,
-    ...component.plugin,
-  } as PluginMetadata
+  return (Array.isArray(component.plugin) ? component.plugin : [component.plugin]).map(
+    plugin =>
+      ({
+        name: `${component.name}.plugin`,
+        displayName: `${component.displayName} - 附带插件`,
+        ...plugin,
+      } as PluginMetadata),
+  )
 }
 /**
  * 载入单个插件
@@ -161,7 +168,7 @@ export const loadAllPlugins = async (components: ComponentMetadata[]) => {
   for (const component of components) {
     const plugin = extractPluginFromComponent(component)
     if (plugin) {
-      plugins.push(plugin)
+      plugins.push(...plugin)
     }
   }
   for (const [name, setting] of Object.entries(settings.userPlugins)) {

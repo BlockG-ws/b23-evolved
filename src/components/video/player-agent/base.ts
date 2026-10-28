@@ -8,6 +8,8 @@ import {
   CustomQuery,
   CustomQueryProvider,
   PlayerAgentEventTypes,
+  PlayerAgentToggleSubtitleResult,
+  PlayerAgentDanmakuSwitchState,
 } from './types'
 
 export const elementQuery = (selector: string): ElementQuery => {
@@ -71,17 +73,100 @@ export abstract class PlayerAgent
   toggleMute() {
     return click(this.query.control.buttons.volume)
   }
-  toggleDanmaku() {
+  getDanmakuState(): PlayerAgentDanmakuSwitchState | null {
+    const checkbox = this.query.danmakuSwitch.sync() as HTMLInputElement
+    if (!checkbox) {
+      return null
+    }
+    if (checkbox.indeterminate) {
+      return 'concise'
+    }
+    return checkbox.checked ? 'on' : 'off'
+  }
+  toggleDanmaku(): PlayerAgentDanmakuSwitchState | null {
     const checkbox = this.query.danmakuSwitch.sync() as HTMLInputElement
     if (!checkbox) {
       return null
     }
     checkbox.checked = !checkbox.checked
     raiseEvent(checkbox, 'change')
-    return checkbox.checked
+    return this.getDanmakuState()
   }
-  toggleSubtitle() {
-    return click(this.query.control.buttons.subtitle)
+  getSupportedDanmakuStates(): PlayerAgentDanmakuSwitchState[] {
+    const isThreeState = this.query.danmakuSwitch
+      .sync()
+      ?.closest('.bpx-player-dm-switch')
+      ?.classList.contains('bui-danmaku-switch-new')
+    return isThreeState ? ['on', 'concise', 'off'] : ['on', 'off']
+  }
+  toggleSubtitle(preferredLanguage?: string): PlayerAgentToggleSubtitleResult {
+    const closeSwitch = dq('.bpx-player-ctrl-subtitle-close-switch') as HTMLDivElement | null
+
+    const isNoSubtitleConfigured = !closeSwitch
+    if (isNoSubtitleConfigured) {
+      return {
+        element: null,
+        result: 'no-subtitle-configured',
+      }
+    }
+
+    const isSubtitleDisabled = closeSwitch?.classList.contains('bpx-state-active')
+    if (!isSubtitleDisabled) {
+      closeSwitch?.click()
+      return {
+        element: closeSwitch,
+        result: 'success',
+      }
+    }
+
+    const subtitleOptions = dqa(
+      '.bpx-player-ctrl-subtitle-major .bpx-player-ctrl-subtitle-language-item',
+    ) as HTMLDivElement[]
+    if ((subtitleOptions?.length ?? 0) === 0) {
+      return {
+        element: null,
+        result: 'no-subtitle-configured',
+      }
+    }
+
+    const storedSubtitleLanguage =
+      this.getPlayerConfig<null, string>('subtitle.preferred_language', null) ??
+      this.getPlayerConfig<null, string>('subtitle.lan', null)
+    const subtitleLanguage = preferredLanguage?.trim() || storedSubtitleLanguage
+    if (subtitleLanguage === null) {
+      const firstOption = subtitleOptions.at(0)
+      firstOption?.click()
+      return {
+        element: firstOption,
+        result: 'success',
+      }
+    }
+
+    const normalizedLanguage = subtitleLanguage.replace(/^ai-/, '')
+    const baseLanguage = normalizedLanguage.split('-')[0]
+    const matchers = [
+      () => subtitleOptions.find(it => it.dataset.lan === normalizedLanguage),
+      () =>
+        subtitleOptions.find(
+          it => !it.dataset.lan?.startsWith('ai-') && it.dataset.lan?.includes(baseLanguage),
+        ),
+      () => subtitleOptions.find(it => it.dataset.lan === `ai-${baseLanguage}`),
+      () => subtitleOptions.at(0),
+    ]
+
+    const option = matchers.map(match => match()).find(Boolean)
+    if (!option) {
+      return {
+        element: null,
+        result: 'no-subtitle-configured',
+      }
+    }
+
+    option.click()
+    return {
+      element: option,
+      result: 'success',
+    }
   }
 
   /** true 开灯，false 关灯 */
@@ -89,22 +174,22 @@ export abstract class PlayerAgent
     if (!this.nativeApi) {
       return null
     }
-    const isCurrentLightOff = this.nativeApi.getLightOff()
-    // 无指定参数, 直接 toggle
-    if (on === undefined) {
-      this.nativeApi.setLightOff(!isCurrentLightOff)
-      return !isCurrentLightOff
+    const isLightOn = !this.nativeApi.getLightOff()
+    const targetLightOn = on ?? !isLightOn
+    const changed = targetLightOn !== isLightOn
+    if (changed) {
+      this.nativeApi.setLightOff(!targetLightOn)
+      // 同步设置面板中的 "关灯模式" 勾选框 (原生 API 不会自动更新该 UI), 面板懒加载可能尚未完成
+      this.query.control.settings.lightOff().then(checkbox => {
+        if (checkbox instanceof HTMLInputElement) {
+          checkbox.checked = !targetLightOn
+        }
+      })
     }
-    // 关灯状态 && 要开灯 -> 开灯
-    if (on && isCurrentLightOff) {
-      this.nativeApi.setLightOff(false)
-      return true
-    }
-    if (!on && !isCurrentLightOff) {
-      this.nativeApi.setLightOff(true)
-      return false
-    }
-    return null
+    window.dispatchEvent(
+      new CustomEvent('playerLightChange', { detail: { lightOn: targetLightOn } }),
+    )
+    return changed ? targetLightOn : null
   }
 
   getPlayerConfig<DefaultValueType = unknown, ValueType = DefaultValueType>(
@@ -117,6 +202,17 @@ export abstract class PlayerAgent
 
   isAutoPlay() {
     return this.getPlayerConfig('video_status.autoplay')
+  }
+
+  isAutoPlayNextVideo(): boolean {
+    return this.nativeApi.getHandoff() !== this.nanoApi.HandoffKind.Abort
+  }
+
+  setAutoPlayNextVideo(enabled: boolean) {
+    const target = enabled ? this.nanoApi.HandoffKind.Auto : this.nanoApi.HandoffKind.Abort
+    if (this.nativeApi.getHandoff() !== target) {
+      this.nativeApi.setHandoff(target)
+    }
   }
 
   // https://github.com/the1812/Bilibili-Evolved/discussions/4341
@@ -231,5 +327,19 @@ export abstract class PlayerAgent
     }
     this.nativeApi.seek(video.currentTime + change, video.paused)
     return this.nativeApi.getCurrentTime()
+  }
+  /** 切换到上一分 P */
+  previousPart() {
+    if (!this.nativeApi?.getManifest?.().hasPrev) {
+      return null
+    }
+    return this.nativeApi.prev()
+  }
+  /** 切换到下一分 P */
+  nextPart() {
+    if (!this.nativeApi?.getManifest?.().hasNext) {
+      return null
+    }
+    return this.nativeApi.next()
   }
 }

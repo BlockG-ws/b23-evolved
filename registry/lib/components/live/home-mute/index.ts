@@ -1,22 +1,20 @@
 import { defineComponentMetadata } from '@/components/define'
 import { addComponentListener } from '@/core/settings'
 import { addStyle, removeStyle } from '@/core/style'
+import style from './index.scss'
 
 const liveHome = /^https:\/\/live\.bilibili\.com\/(index\.html)?$/
 export const component = defineComponentMetadata({
   name: 'liveHomeMute',
   displayName: '直播首页静音',
   tags: [componentsTags.live],
-  description: {
-    'zh-CN': '禁止直播首页的推荐直播间自动开始播放.',
-  },
   entry: async ({ metadata }) => {
     const styleID = 'hide-home-live'
     addComponentListener(
       `${metadata.name}.hide`,
       (value: boolean) => {
         if (value) {
-          addStyle('.player-area-ctnr,#player-header { display: none !important }', styleID)
+          addStyle(style, styleID)
         } else {
           removeStyle(styleID)
         }

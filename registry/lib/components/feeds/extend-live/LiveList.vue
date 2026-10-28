@@ -101,7 +101,7 @@ const fetchRecommendLiveInfos = async (): Promise<LiveInfo[]> => {
         face,
         uname,
         title,
-        roomid: room_id,
+        roomid: room_id.toString(),
         pic: '', // portal 接口没有
         online: 0, // portal 接口没有
         uid: mid,
@@ -119,10 +119,12 @@ const mergeRecommendLiveInfos = (liveInfos: LiveInfo[], recommendLiveInfos: Live
   return lodash.concat(recommendLiveInfos, feedConcatItems)
 }
 
+const sameUID = (a: unknown, b: unknown) => String(a) === String(b)
+
 const sortByUsers = (users: FollowingUserInfo[], descending = false) => {
   return (a: LiveInfo, b: LiveInfo) => {
-    const aPinnedIndex = users.findIndex(it => it.mid === a.uid)
-    const bPinnedIndex = users.findIndex(it => it.mid === b.uid)
+    const aPinnedIndex = users.findIndex(it => sameUID(it.mid, a.uid))
+    const bPinnedIndex = users.findIndex(it => sameUID(it.mid, b.uid))
     if (bPinnedIndex === -1 && aPinnedIndex === -1) {
       return 0
     }
@@ -193,7 +195,7 @@ const fetchLiveList = async () => {
             face,
             uname,
             title,
-            roomid: room_id,
+            roomid: room_id.toString(),
             pic: cover_from_user,
             online,
             uid,
@@ -206,7 +208,7 @@ const fetchLiveList = async () => {
     const [allItems, recommendItems] = await Promise.all([promise, fetchRecommendLiveInfos()])
     const sortedItems = mergeRecommendLiveInfos(allItems, recommendItems)
       .sort(sortByUsers(pinnedUsers.value, false))
-      .filter(item => !hiddenUsers.value.some(user => user.mid === item.uid))
+      .filter(item => !hiddenUsers.value.some(user => sameUID(user.mid, item.uid)))
     items.value = sortedItems
   } finally {
     loaded.value = true
@@ -313,9 +315,24 @@ onBeforeUnmount(() => {
       max-height: calc(100vh - 414px);
     }
 
+    // 开启动态分组过滤
+    .group-filter-section ~ .sticky & {
+      max-height: calc(100vh - 414px);
+    }
+
+    // 同时开启动态过滤器和动态分组过滤
+    body.enable-feeds-filter .group-filter-section ~ .sticky & {
+      max-height: calc(100vh - 470px);
+    }
+
     // 禁掉 profile 后
     body.feeds-filter-side-block-profile & {
       max-height: calc(100vh - 218px);
+    }
+
+    // 禁掉 profile 后开启动态分组过滤
+    body.feeds-filter-side-block-profile .group-filter-section ~ .sticky & {
+      max-height: calc(100vh - 274px);
     }
   }
 

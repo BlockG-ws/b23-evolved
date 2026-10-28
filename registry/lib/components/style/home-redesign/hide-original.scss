@@ -23,12 +23,16 @@
     @include layout-shift();
   }
   margin: 0 !important;
+  max-width: unset !important;
+  align-self: stretch;
 }
 #i_cecream,
 .bili-feed4 {
   > main,
   .palette-button-outer,
   .bili-header__channel,
+  .header-channel,
+  .header-channel-fixed,
   > .bili-feed4 > :not(.bili-header),
   .bili-footer {
     @include layout-shift();

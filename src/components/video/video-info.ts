@@ -4,32 +4,83 @@ export interface UpInfo {
   uid: number
   name: string
   faceUrl: string
+  /** 联合投稿的角色 */
+  role?: string
 }
 
 export interface VideoPageInfo {
   cid: number
   title: string
   pageNumber: number
+  duration: number
+  ctime: number
+  dimension: { width: number; height: number }
 }
 
-export interface UgcSeasonEpisodeInfo {
-  aid: string
-  bvid: string
+export interface VideoSeasonEpisodeInfo {
+  season_id: number
+  section_id: number
+  id: number
+  aid: number
   cid: number
-  title: string
+  bvid?: string
+  title?: string
+  page?: VideoPageInfo
+  pages?: VideoPageInfo[]
 }
 
-export interface UgcSeasonSectionInfo {
-  title: string
-  episodes: UgcSeasonEpisodeInfo[]
+export interface VideoSeasonSectionInfo {
+  id?: number
+  title?: string
+  season_id?: number
+  episodes?: VideoSeasonEpisodeInfo[]
 }
 
-export interface UgcSeasonInfo {
-  seasonId: number
-  title: string
-  sections: UgcSeasonSectionInfo[]
-  /** All episodes flattened across sections, in order */
-  episodes: UgcSeasonEpisodeInfo[]
+export interface VideoSeasonInfo {
+  id?: number
+  title?: string
+  sections?: VideoSeasonSectionInfo[]
+}
+
+const normalizeVideoPage = (page: any): VideoPageInfo => ({
+  cid: page.cid,
+  title: page.title ?? page.part,
+  pageNumber: page.pageNumber ?? page.page,
+  duration: page.duration ?? 0,
+  dimension: page.dimension,
+  ctime: page.ctime,
+})
+
+const normalizeVideoSeasonEpisode = (episode: any): VideoSeasonEpisodeInfo => {
+  const normalizedPage = episode.page ? normalizeVideoPage(episode.page) : undefined
+  const normalizedPages = episode.pages?.map((page: any) => normalizeVideoPage(page))
+  return {
+    season_id: episode.season_id,
+    section_id: episode.section_id,
+    id: episode.id,
+    aid: episode.aid,
+    cid: episode.cid,
+    bvid: episode.bvid,
+    title: episode.title,
+    page: normalizedPage,
+    pages: normalizedPages ?? (normalizedPage ? [normalizedPage] : undefined),
+  }
+}
+
+const normalizeVideoSeason = (ugcSeason: any): VideoSeasonInfo | undefined => {
+  if (!ugcSeason) {
+    return undefined
+  }
+  return {
+    id: ugcSeason.id,
+    title: ugcSeason.title,
+    sections: ugcSeason.sections?.map((section: any) => ({
+      id: section.id,
+      title: section.title,
+      season_id: section.season_id,
+      episodes: section.episodes?.map((episode: any) => normalizeVideoSeasonEpisode(episode)),
+    })),
+  }
 }
 
 export interface VideoStat {
@@ -58,8 +109,11 @@ export class VideoInfo {
   title: string
   description: string
   up: UpInfo
+  /** 联合投稿创作团队 */
+  staffs?: UpInfo[]
   pages: VideoPageInfo[]
-  ugcSeason?: UgcSeasonInfo
+  ugcSeason?: VideoSeasonInfo
+  /** 跳转到番剧的URL */
   redirectUrl?: string
   stat: VideoStat
 
@@ -101,31 +155,19 @@ export class VideoInfo {
       name: data.owner.name,
       faceUrl: data.owner.face.replace('http:', 'https:'),
     }
-    this.pages = data.pages.map((it: any) => ({
-      cid: it.cid,
-      title: it.part,
-      pageNumber: it.page,
-    }))
-    const ugcSeasonData = data.ugc_season
-    if (ugcSeasonData) {
-      const sections: UgcSeasonSectionInfo[] = (ugcSeasonData.sections ?? []).map((s: any) => ({
-        title: s.title ?? '',
-        episodes: (s.episodes ?? []).map((e: any) => ({
-          aid: String(e.aid),
-          bvid: String(e.bvid),
-          cid: Number(e.cid),
-          title: String(e.title ?? ''),
-        })),
-      }))
-      this.ugcSeason = {
-        seasonId: ugcSeasonData.id,
-        title: ugcSeasonData.title ?? '',
-        sections,
-        episodes: sections.flatMap(s => s.episodes),
-      }
-    } else {
-      this.ugcSeason = undefined
+    if (data.staff) {
+      this.staffs = data.staff.map(
+        x =>
+          <UpInfo>{
+            uid: x.mid,
+            name: x.name,
+            faceUrl: x.face.replace('http:', 'https:'),
+            role: x.title,
+          },
+      )
     }
+    this.pages = data.pages.map((it: any) => normalizeVideoPage(it))
+    this.ugcSeason = normalizeVideoSeason(data.ugc_season)
     this.redirectUrl = data.redirect_url
     this.stat = data.stat
     return this
