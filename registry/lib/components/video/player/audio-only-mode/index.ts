@@ -35,8 +35,7 @@ export const component = defineComponentMetadata({
     link: 'https://github.com/GrassBlock1',
   },
   description: {
-    'zh-CN':
-      '只获取视频的音频部分，节省流量和性能。如果已经有播放进度，会从那一刻开始播放。点击播放控制栏的耳机按钮进入音频模式，再次点击即可切回当前选择的清晰度，无需刷新页面。',
+    'zh-CN': '模拟“听视频”功能，开启时只获取视频的音频部分，以节省流量和性能消耗。',
   },
   tags: [componentsTags.video],
   entry,
